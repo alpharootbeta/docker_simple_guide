@@ -1,0 +1,242 @@
+Ctrl-P + Ctrl-Q 回到宿主机 shell，容器 detach 状态
+
+创建一个容器，让其中运行bash应用： sudo docker run -t -i ubuntu:12.04 /bin/bash
+
+
+列出镜像：docker images    /  image Id 唯一标识一个镜像
+
+
+创建并运行镜像：docker run -t(分配一个伪tty) -i(交互模式) ubuntu:12.04 /bin/bash
+	ubuntu 是仓库名
+	12.04是TAG
+	
+	$ sudo docker run -t -i -c 100 -m 512MB -h test1 -d --name="docker_test1" ubuntu /bin/bash
+	创建一个 cpu 优先级为 100，内存限制 512MB，主机名为 test1，名为 docker_test1 后台运行 bash 的容器
+	
+	指定网络模式： -net=host/container:NAME_OR_ID/none/bridge
+		host : 使用和宿主机一样的ip和端口（容器不会虚拟自己的网卡以及配置自己的ip）
+		container : 新创建的容器和已经存在的一个容器共享一个ip和端口，自己不配置，而不是共享宿主机的
+		none :  docker容器自己拥有网络，并不会为其配置，需要自己手动添加网卡，配置ip等
+		bridge : docker默认的网络设置，docker容器以docker0为虚拟网桥或者叫路由，所有的docker容器都连接到这个docker0上，由docker0来做路由，由docker0网桥来分配ip
+		
+		列出主机网桥：yum -y install bridge-utils  / brctl show
+		
+		使用特定范围的IP：需要安装 bridge-utils
+			确保：
+				1. docker 进程是停止的：  service docker stop / systemctl stop docker
+					关闭并卸载掉docker0网桥(你也可以不用卸载)
+						ip link set dev docker0 down
+						brctl delbr docker0
+						
+				2. 创建自定义网桥： 
+					$ brctl addbr bridge0
+					$ ip addr add 192.168.5.1/24 dev bridge0
+					$ ip link set dev bridge0 up
+					
+					//ip addr show bridge0 查看
+					
+				3. 修改docker文件把自己创建的网桥指定上去
+					$ cat /etc/sysconfig/docker | grep 'OPTIONS='
+						OPTIONS=--selinux-enabled -b=bridge0 -H fd://
+					
+				4.注意
+					如果删除了默认的 docker0 桥接，把 docker 默认桥接指定到了 bridge0，则最好在创建容器的时候加上 --net=none，防止自动分配的 IP 在局域网中有冲突
+	
+  
+	
+不同主机间容器通信：
+	借助： pipework
+		git clone https://github.com/jpetazzo/pipework.git
+		$ sudo cp -rp pipework/pipework /usr/local/bin/
+		
+		sudo pipework br0 -i eth0 a46657528059 192.168.115.10/24@192.168.115.2
+			# 默认不指定网卡设备名，则默认添加为 eth1
+			# 另外 pipework 不能添加静态路由，如果有需求则可以在 run 的时候加上 --privileged=true 权限在容器中手动添加，
+			# 但这种安全性有缺陷，可以通过 ip netns 操作
+		
+		
+		使用 ip netns 添加静态路由，避免创建容器使用 --privileged=true 选项造成一些不必要的安全问题
+			$ docker inspect --format="{{ .State.Pid }}" a46657528059 # 获取指定容器 pid
+			6350
+			$ sudo ln -s /proc/6350/ns/net /var/run/netns/6350
+			$ sudo ip netns exec 6350 ip route add 192.168.0.0/16 dev eth0 via 192.168.115.2
+			$ sudo ip netns exec 6350 ip route    # 添加成功
+		
+			
+	
+进入镜像：docker attach docker_test1
+
+
+
+开启/关闭/杀掉镜像： 
+	docker start CONTAINER
+		   stop  / -t 可执行超时时间
+		   kill   / kill -s 信号类型
+		   restart  / -t 可执行超时时间
+		   pause
+		   unpause
+		   rm  
+		   commit  提交指定容器为镜像  
+		   inpect 
+		   logs   输出指定容器日志信息   -f(类似 tail -f) 
+			
+		   create 创建容器而不启动
+			  创建：docker create -t -i centos /bin/bash    
+			  运行：docker start -a -i 容器ID
+	
+	
+  
+搜索镜像： docker search centos/ubuntu(默认下载所有) / 可以指定版本号 docker search docker.io/ptyhon:v3.2(举例实际不存在) 
+
+
+docker 信息： docker info
+
+
+镜像信息： docker ps(查询启动的容器)  / docker ps -a (查看所有容器) / docker ps -as (查看所有容器并显示大小)
+
+ 
+
+拉取镜像： docker pull centos/ubuntu
+	docker pull ubuntu:14.04 下载执行版本ubuntu官方镜像
+		相当于：sudo docker pull registry.hub.docker.com/ubuntu:12.04
+		可以还其他源： sudo docker pull dl.dockerpool.com:5000/ubuntu:12.04
+	
+推送镜像： docker push 192.168.0.100:5000/ubuntu(ubuntu:14.04)
+
+删除镜像： docker rmi -f(强制) docker.io/ubuntu
+
+端口映射： docker run -t -P --expose 22 --name server ubuntu:14.04  (-P使用时需要指定 --expose选项，指定需要对外提供服务的端口)
+	
+	绑定端口到指定接口：sudo docker run -p 127.0.0.1:80:8080 <image> <cmd>
+		127.0.0.1 是主机ip，80主机端口，8080容器端口
+		
+		sudo docker run -p 127.0.0.1::8080 <image> <cmd>
+		sudo docker run -p 80:8080 <image> <cmd>
+		sudo docker run -p 8080 <image> <cmd>
+		
+	绑定UDP端口：
+		sudo docker run -p 127.0.0.1:53:5353/udp <image> <cmd>
+		
+		
+DOCKERFILE ：（待补充）
+		
+		
+		
+容器数据管理：
+	1. 数据卷
+	2. 数据卷容器
+		
+		sudo docker run --rm --name test -v /source/:/test:ro -t -i ubuntu:14.04 /bin/bash	
+			把宿主机/source目录挂载在容器的/test下，只读方式
+			--rm 选项： 表示如果test容器有，则删除test重新创建
+			
+			
+			
+链接容器：  
+	使用 --link
+	$ sudo docker run -d --name db training/postgres
+	$ sudo docker run -d -P --name web --link db:db training/webapp python app.py
+	--link <name or id>:alias 选项指定链接到的容器。
+	
+	
+	目的：不用容器向外公开任何端口给外部容器，例如：web服务器和数据库服务器之间做链接
+	
+	
+	
+	
+往 hub.docker.com 上传镜像：
+		
+		1. 查看要上传的镜像： （自己下载的centos镜像，创建了一个叫centos_test的容器，在root下面创建了一个叫text.txt的文件）
+		(提交镜像的时候格式为： docker commit -m "touch a txt on it" -a "xz295139210(作者)" 798adb1953e1 docker.io/xz295139210/centos:v1) 
+			这里的xz295139210就是自己的hub.docker.com的账户
+			798adb1953e1 --> 这个是 docker ps - a 查出来的 centos_test 容器的CONTAINER ID
+			
+			[root@localhost ~]# docker images
+			REPOSITORY                   TAG                 IMAGE ID            CREATED             SIZE
+			xz295139210/python           v1                  6cd5799caed0        8 seconds ago       687.3 MB
+		
+		2. docker login  --> 验证帐号和密码
+				
+		3.上传：docker push docker.io/xz295139210/centos:v1   
+			xz295139210/centos:v1 --> 通过 docker images 查出来。
+			
+			
+		
+从自己的 hub.docker.com 上下载镜像：
+	1. docker login 
+	2. docker pull xz295139210/python:v2
+		
+		
+		
+		
+		
+搜索镜像：
+	[root@localhost ~]# docker search python
+	INDEX       NAME                                     DESCRIPTION                                     STARS     OFFICIAL   AUTOMATED
+	docker.io   docker.io/python                         Python is an interpreted, interactive, obj...   1621      [OK]       
+	docker.io   docker.io/kaggle/python                  Docker image for Python scripts run on Kaggle   53                   [OK]
+		
+		命名格式：docker.io/kaggle/python    --> kaggle就为docker镜像源的一个用户
+	
+	
+	
+	
+	
+sudo docker   # docker 命令帮助
+
+Commands:
+    attach    Attach to a running container                 # 当前 shell 下 attach 连接指定运行镜像
+    build     Build an image from a Dockerfile              # 通过 Dockerfile 定制镜像
+    commit    Create a new image from a container's changes # 提交当前容器为新的镜像
+    cp        Copy files/folders from the containers filesystem to the host path
+              # 从容器中拷贝指定文件或者目录到宿主机中
+    create    Create a new container                        # 创建一个新的容器，同 run，但不启动容器
+    diff      Inspect changes on a container's filesystem   # 查看 docker 容器变化
+    events    Get real time events from the server          # 从 docker 服务获取容器实时事件
+    exec      Run a command in an existing container        # 在已存在的容器上运行命令
+    export    Stream the contents of a container as a tar archive
+              # 导出容器的内容流作为一个 tar 归档文件[对应 import ]
+    history   Show the history of an image                  # 展示一个镜像形成历史
+    images    List images                                   # 列出系统当前镜像
+    import    Create a new filesystem image from the contents of a tarball
+              # 从tar包中的内容创建一个新的文件系统映像[对应 export]
+    info      Display system-wide information               # 显示系统相关信息
+    inspect   Return low-level information on a container   # 查看容器详细信息
+    kill      Kill a running container                      # kill 指定 docker 容器
+    load      Load an image from a tar archive              # 从一个 tar 包中加载一个镜像[对应 save]
+    login     Register or Login to the docker registry server
+              # 注册或者登陆一个 docker 源服务器
+			  docker login --username=<user username> --email=<user email address>
+			  
+			  
+    logout    Log out from a Docker registry server         # 从当前 Docker registry 退出
+    logs      Fetch the logs of a container                 # 输出当前容器日志信息
+    port      Lookup the public-facing port which is NAT-ed to PRIVATE_PORT
+              # 查看映射端口对应的容器内部源端口
+    pause     Pause all processes within a container        # 暂停容器
+    ps        List containers                               # 列出容器列表
+    pull      Pull an image or a repository from the docker registry server
+              # 从docker镜像源服务器拉取指定镜像或者库镜像
+    push      Push an image or a repository to the docker registry server
+              # 推送指定镜像或者库镜像至docker源服务器
+    restart   Restart a running container                   # 重启运行的容器
+    rm        Remove one or more containers                 # 移除一个或者多个容器
+    rmi       Remove one or more images
+              # 移除一个或多个镜像[无容器使用该镜像才可删除，否则需删除相关容器才可继续或 -f 强制删除]
+    run       Run a command in a new container
+              # 创建一个新的容器并运行一个命令
+    save      Save an image to a tar archive                # 保存一个镜像为一个 tar 包[对应 load]
+    search    Search for an image on the Docker Hub         # 在 docker hub 中搜索镜像
+    start     Start a stopped containers                    # 启动容器
+    stop      Stop a running containers                     # 停止容器
+    tag       Tag an image into a repository                # 给源中镜像打标签
+    top       Lookup the running processes of a container   # 查看容器中运行的进程信息
+    unpause   Unpause a paused container                    # 取消暂停容器
+    version   Show the docker version information           # 查看 docker 版本号
+    wait      Block until a container stops, then print its exit code
+              # 截取容器停止时的退出状态值
+Run 'docker COMMAND --help' for more information on a command.	
+	
+		
+		
+	
