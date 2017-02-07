@@ -105,6 +105,8 @@ docker 信息： docker info
 
 删除镜像： docker rmi -f(强制) docker.io/ubuntu
 
+删除容器： docker rm python_test
+
 端口映射： docker run -t -P --expose 22 --name server ubuntu:14.04  (-P使用时需要指定 --expose选项，指定需要对外提供服务的端口)
 	
 	绑定端口到指定接口：sudo docker run -p 127.0.0.1:80:8080 <image> <cmd>
