@@ -1,10 +1,8 @@
-Ctrl-P + Ctrl-Q 回到宿主机 shell，容器 detach 状态
+Ctrl + P + Q 回到宿主机 shell，容器 detach 状态
 
 创建一个容器，让其中运行bash应用： sudo docker run -t -i ubuntu:12.04 /bin/bash
 
-
 列出镜像：docker images    /  image Id 唯一标识一个镜像
-
 
 创建并运行镜像：docker run -t(分配一个伪tty) -i(交互模式) ubuntu:12.04 /bin/bash
 	ubuntu 是仓库名
@@ -42,14 +40,13 @@ Ctrl-P + Ctrl-Q 回到宿主机 shell，容器 detach 状态
 				4.注意
 					如果删除了默认的 docker0 桥接，把 docker 默认桥接指定到了 bridge0，则最好在创建容器的时候加上 --net=none，防止自动分配的 IP 在局域网中有冲突
 	
-  
 	
 不同主机间容器通信：
 	借助： pipework
 		git clone https://github.com/jpetazzo/pipework.git
 		$ sudo cp -rp pipework/pipework /usr/local/bin/
 		
-		sudo pipework br0 -i eth0 a46657528059 192.168.115.10/24@192.168.115.2
+		pipework br0 -i eth0 a46657528059 192.168.115.10/24@192.168.115.2
 			# 默认不指定网卡设备名，则默认添加为 eth1
 			# 另外 pipework 不能添加静态路由，如果有需求则可以在 run 的时候加上 --privileged=true 权限在容器中手动添加，
 			# 但这种安全性有缺陷，可以通过 ip netns 操作
@@ -61,11 +58,14 @@ Ctrl-P + Ctrl-Q 回到宿主机 shell，容器 detach 状态
 			$ sudo ln -s /proc/6350/ns/net /var/run/netns/6350
 			$ sudo ip netns exec 6350 ip route add 192.168.0.0/16 dev eth0 via 192.168.115.2
 			$ sudo ip netns exec 6350 ip route    # 添加成功
-		
+			
+				
+			
 			
 	
-进入镜像：docker attach docker_test1
-
+进入镜像：
+	方式1：docker attach con_name 将终端附着到正在运行的容器名为con_name的容器的终端上面去，前提是创建该容器时指定了相应的sh
+	方式2：docker exec -ti jiedai-op /bin/bash  
 
 
 开启/关闭/杀掉镜像： 
@@ -84,13 +84,10 @@ Ctrl-P + Ctrl-Q 回到宿主机 shell，容器 detach 状态
 			  创建：docker create -t -i centos /bin/bash    
 			  运行：docker start -a -i 容器ID
 	
+		
+搜索镜像： docker search centos/ubuntu(默认下载所有)  
 	
-  
-搜索镜像： docker search centos/ubuntu(默认下载所有) / 可以指定版本号 docker search docker.io/ptyhon:v3.2(举例实际不存在) 
-
-
 docker 信息： docker info
-
 
 镜像信息： docker ps(查询启动的容器)  / docker ps -a (查看所有容器) / docker ps -as (查看所有容器并显示大小)
 
@@ -122,6 +119,8 @@ docker 信息： docker info
 		
 DOCKERFILE ：（待补充）
 		
+	--privileged	
+		
 		
 		
 容器数据管理：
@@ -131,6 +130,8 @@ DOCKERFILE ：（待补充）
 		sudo docker run --rm --name test -v /source/:/test:ro -t -i ubuntu:14.04 /bin/bash	
 			把宿主机/source目录挂载在容器的/test下，只读方式
 			--rm 选项： 表示如果test容器有，则删除test重新创建
+			
+			注意：  /source/ 不能放在宿主机的/root目录下，建议放在/home/目录下。
 			
 			
 			
@@ -142,6 +143,11 @@ DOCKERFILE ：（待补充）
 	
 	
 	目的：不用容器向外公开任何端口给外部容器，例如：web服务器和数据库服务器之间做链接
+	
+	
+	
+不同主机间容器通信：	
+	
 	
 	
 	
@@ -179,9 +185,51 @@ DOCKERFILE ：（待补充）
 	docker.io   docker.io/kaggle/python                  Docker image for Python scripts run on Kaggle   53                   [OK]
 		
 		命名格式：docker.io/kaggle/python    --> kaggle就为docker镜像源的一个用户
+
 	
 	
+宿主机上对容器执行操作：
+		 docker exec 可以用来在容器中运行一个进程
+		 docker exec e307f916494c touch /root/hehe.txt
+		 		
 	
+给镜像打标签：
+	docker tag d1e32b95d8e8 192.168.2.67:5000/test
+		192.168.2.67:5000 --> 相当于官方仓库的 docker.io / 也就是要上传的地址
+		test --> 就是你的镜像名
+		
+		tag 不同于 	commit ：
+			tag是在源中镜像打一个tag
+			commit是把容器提交成为一个镜像
+		 
+		 
+		 
+创建私有仓库上传镜像：
+	错误1：
+	[root@localhost ~]# docker push 192.168.2.67:5000/test
+	The push refers to a repository [192.168.2.67:5000/test]
+	Get https://192.168.2.67:5000/v1/_ping: http: server gave HTTP response to HTTPS client
+	
+	解决1：
+	1.cat  /etc/docker/daemon.json
+		{
+			"live-restore": true,
+			"insecure-registries" : ["192.168.2.67:5000"]
+		}
+		
+	2. 重启docker
+	
+	
+		 
+	
+		 
+容器访问控制：
+	1. 容器想访问外部网络
+		1.1 sysctl net.ipv4.ip_forward
+			 net.ipv4.ip_forward = 1
+		1.2 也可以在启动docker时，设定--ip-forward=true, docker就会自动设定系统ip_forward参数为1
+
+		
 	
 	
 sudo docker   # docker 命令帮助
@@ -241,4 +289,13 @@ Run 'docker COMMAND --help' for more information on a command.
 	
 		
 		
+		
+		
+		
+
+
 	
+ 
+	
+
+ 
